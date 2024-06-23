@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
@@ -20,8 +23,14 @@ import (
 func main() {
 	log.SetFlags(0)
 	args := runArgs{}
-	flag.StringVar(&args.q, "q", args.q, "your prompt to LLM")
-	flag.Func("f", "file to attach (can be used multiple times)", func(name string) error {
+	flag.StringVar(&args.q, "q", args.q, "your `prompt` to LLM."+
+		"\nYou can also provide prompt over stdin."+
+		"\nIf you provide data on stdin AND use this flag¹,"+
+		"\nthen data provided over stdin are wrapped within <document> tags"+
+		"\nand the text provided using this flag goes after that."+
+		"\n\n¹ Note that when you use this flag and stdin is a terminal,"+
+		"\n it is NOT read to avoid the illusion of blocking.")
+	flag.Func("f", "`file` to attach (can be used multiple times)", func(name string) error {
 		if name != "" {
 			args.attach = append(args.attach, name)
 		}
@@ -39,8 +48,38 @@ type runArgs struct {
 }
 
 func run(ctx context.Context, args runArgs) error {
-	if args.q == "" {
-		return errors.New("no query provided")
+	var stdinIsTerminal bool
+	if st, err := os.Stdin.Stat(); err == nil {
+		stdinIsTerminal = st.Mode()&os.ModeCharDevice != 0
+	}
+	var pb strings.Builder
+	var stdinData []byte
+	var err error
+	if stdinIsTerminal && args.q == "" {
+		log.Println("Please type your prompt, when done, submit with ^D")
+	}
+	if !stdinIsTerminal || (stdinIsTerminal && args.q == "") {
+		stdinData, err = io.ReadAll(os.Stdin)
+	}
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(stdinData)) == 0 && args.q == "" {
+		return errors.New("empty prompt: please feed it over stdin and/or use the -q flag")
+	}
+	if !utf8.Valid(stdinData) {
+		return errors.New("can only take valid utf8 data on stdin")
+	}
+	switch args.q {
+	case "":
+		pb.Write(stdinData)
+	default:
+		if len(bytes.TrimSpace(stdinData)) != 0 {
+			pb.WriteString("<document>\n")
+			pb.Write(stdinData)
+			pb.WriteString("</document>\n\n")
+		}
+		pb.WriteString(args.q)
 	}
 	var contentBlocks []types.ContentBlock
 	for _, name := range slices.Compact(args.attach) {
@@ -50,7 +89,7 @@ func run(ctx context.Context, args runArgs) error {
 		}
 		contentBlocks = append(contentBlocks, block)
 	}
-	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: args.q})
+	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: pb.String()})
 
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -61,13 +100,17 @@ func run(ctx context.Context, args runArgs) error {
 	const claudeModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelId = claudeModelId
 	for i := range contentBlocks {
-		if _, ok := contentBlocks[i].(*types.ContentBlockMemberDocument); ok {
+		if doc, ok := contentBlocks[i].(*types.ContentBlockMemberDocument); ok {
 			// https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html#conversation-inference-supported-models-features
 			// Anthropic Claude 3.5 on AWS Bedrock only supports image attachments, not documents,
 			// as of 2024-06-23. If the document is attached, pick another model.
 			// https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns
 			const oldClaudeModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
 			log.Printf("Model %s doesn't support documents, only images, falling back to %s model instead.", modelId, oldClaudeModelId)
+			switch doc.Value.Format {
+			case types.DocumentFormatMd, types.DocumentFormatHtml, types.DocumentFormatCsv, types.DocumentFormatTxt:
+				log.Print("You can also feed text documents as part of the prompt by ingesting them over stdin.")
+			}
 			modelId = oldClaudeModelId
 			break
 		}
