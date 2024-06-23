@@ -1,4 +1,4 @@
-module bedrock-llm
+module github.com/artyom/llmcli
 
 go 1.23rc1
 
