@@ -36,6 +36,7 @@ func main() {
 		}
 		return nil
 	})
+	flag.BoolVar(&args.v, "v", args.v, "output some additional details like token usage")
 	flag.Parse()
 	if err := run(context.Background(), args); err != nil {
 		log.Fatal(err)
@@ -45,6 +46,7 @@ func main() {
 type runArgs struct {
 	q      string
 	attach []string
+	v      bool
 }
 
 func run(ctx context.Context, args runArgs) error {
@@ -128,6 +130,7 @@ func run(ctx context.Context, args runArgs) error {
 	if err != nil {
 		return err
 	}
+	var usage *types.TokenUsage
 	stream := out.GetStream()
 	defer stream.Close()
 	for evt := range stream.Events() {
@@ -141,11 +144,18 @@ func run(ctx context.Context, args runArgs) error {
 		case *types.ConverseStreamOutputMemberMessageStart:
 		case *types.ConverseStreamOutputMemberMessageStop:
 		case *types.ConverseStreamOutputMemberMetadata:
+			usage = v.Value.Usage
 		default:
 			log.Printf("unknown event type %T: %+v", evt, evt)
 		}
 	}
-	return stream.Err()
+	if err := stream.Err(); err != nil {
+		return err
+	}
+	if args.v && usage != nil {
+		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
+	}
+	return nil
 }
 
 func contentBlockFromFile(p string) (types.ContentBlock, error) {
