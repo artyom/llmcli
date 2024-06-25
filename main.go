@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -117,8 +118,7 @@ func run(ctx context.Context, args runArgs) error {
 			break
 		}
 	}
-
-	out, err := cl.ConverseStream(ctx, &bedrockruntime.ConverseStreamInput{
+	input := &bedrockruntime.ConverseStreamInput{
 		ModelId: &modelId,
 		Messages: []types.Message{
 			{
@@ -126,7 +126,18 @@ func run(ctx context.Context, args runArgs) error {
 				Content: contentBlocks,
 			},
 		},
-	})
+		System: []types.SystemContentBlock{&types.SystemContentBlockMemberText{
+			Value: time.Now().Local().Format("Today is Monday, 02 Jan 2006, time zone MST")}},
+	}
+	if configDir, err := os.UserConfigDir(); err == nil {
+		if b, err := os.ReadFile(filepath.Join(configDir, "llmcli", "system-prompt.txt")); err == nil {
+			b = bytes.TrimSpace(b)
+			if len(b) != 0 && utf8.Valid(b) {
+				input.System = append(input.System, &types.SystemContentBlockMemberText{Value: string(b)})
+			}
+		}
+	}
+	out, err := cl.ConverseStream(ctx, input)
 	if err != nil {
 		return err
 	}
