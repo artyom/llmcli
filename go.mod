@@ -1,6 +1,6 @@
 module github.com/artyom/llmcli
 
-go 1.23rc1
+go 1.22.0
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.21
