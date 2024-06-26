@@ -222,5 +222,24 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 	default:
 		return nil, fmt.Errorf("file %s is of unsupported content-type %s", p, ct)
 	}
+	// If the attachment looks like a plain text, change it from the attachment
+	// block into the text part of the prompt, wrapped within <document> tags.
+	// We do this because Claude 3.5 Sonnet only supports image attachments,
+	// and if there are attachments of other types, a separate condition in the
+	// code downgrades request to use an older Claude 3 Sonnet model.
+	// By putting plain text attachments inside the prompt we increase the likelihood
+	// of staying within Claude 3.5 Sonnet attachment limits.
+	switch block.Value.Format {
+	case types.DocumentFormatMd, types.DocumentFormatTxt, types.DocumentFormatCsv:
+		if utf8.Valid(b) {
+			text := []byte("<document>\n")
+			text = append(text, b...)
+			if text[len(text)-1] != '\n' {
+				text = append(text, '\n')
+			}
+			text = append(text, "</document>\n"...)
+			return &types.ContentBlockMemberText{Value: string(text)}, nil
+		}
+	}
 	return block, nil
 }
