@@ -40,6 +40,10 @@ func main() {
 		return nil
 	})
 	flag.BoolVar(&args.v, "v", args.v, "output some additional details like token usage")
+	if configDir, err := os.UserConfigDir(); err == nil {
+		args.sys = filepath.Join(configDir, "llmcli", "system-prompt.txt")
+	}
+	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -50,6 +54,7 @@ func main() {
 
 type runArgs struct {
 	q      string
+	sys    string
 	attach []string
 	v      bool
 }
@@ -135,8 +140,8 @@ func run(ctx context.Context, args runArgs) error {
 		System: []types.SystemContentBlock{&types.SystemContentBlockMemberText{
 			Value: time.Now().Local().Format("Today is Monday, 02 Jan 2006, time zone MST")}},
 	}
-	if configDir, err := os.UserConfigDir(); err == nil {
-		if b, err := os.ReadFile(filepath.Join(configDir, "llmcli", "system-prompt.txt")); err == nil {
+	if args.sys != "" {
+		if b, err := os.ReadFile(args.sys); err == nil {
 			b = bytes.TrimSpace(b)
 			if len(b) != 0 && utf8.Valid(b) {
 				input.System = append(input.System, &types.SystemContentBlockMemberText{Value: string(b)})
