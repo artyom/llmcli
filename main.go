@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -40,7 +41,9 @@ func main() {
 	})
 	flag.BoolVar(&args.v, "v", args.v, "output some additional details like token usage")
 	flag.Parse()
-	if err := run(context.Background(), args); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	if err := run(ctx, args); err != nil {
 		log.Fatal(err)
 	}
 }
