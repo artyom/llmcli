@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -98,7 +99,9 @@ func run(ctx context.Context, args runArgs) error {
 	if err != nil {
 		return err
 	}
-	cl := bedrockruntime.NewFromConfig(cfg)
+	cl := bedrockruntime.NewFromConfig(cfg, func(o *bedrockruntime.Options) {
+		o.Retryer = retry.NewStandard()
+	})
 
 	const claudeModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelId = claudeModelId
