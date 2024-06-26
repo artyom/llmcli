@@ -204,7 +204,7 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 			Name:   &docName,
 		},
 	}
-	switch filepath.Ext(p) {
+	switch strings.ToLower(filepath.Ext(p)) {
 	case ".pdf":
 		block.Value.Format = types.DocumentFormatPdf
 	case ".md", ".mkd":
@@ -220,7 +220,11 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 	case ".txt":
 		block.Value.Format = types.DocumentFormatTxt
 	default:
-		return nil, fmt.Errorf("file %s is of unsupported content-type %s", p, ct)
+		if ct == "text/plain; charset=utf-8" {
+			block.Value.Format = types.DocumentFormatTxt
+		} else {
+			return nil, fmt.Errorf("file %s is of unsupported content-type %s", p, ct)
+		}
 	}
 	// If the attachment looks like a plain text, change it from the attachment
 	// block into the text part of the prompt, wrapped within <document> tags.
