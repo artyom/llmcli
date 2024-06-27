@@ -25,5 +25,5 @@ llmcli -h
 
 ## Requirements
 
-- AWS account with Bedrock access
+- AWS account with Bedrock access and the following models enabled: Anthropic Claude 3.5 Sonnet, Anthropic Claude 3 Sonnet.
 - Properly configured AWS credentials
