@@ -93,9 +93,10 @@ func run(ctx context.Context, args runArgs) error {
 		pb.Write(stdinData)
 	default:
 		if len(bytes.TrimSpace(stdinData)) != 0 {
-			pb.WriteString("<document>\n")
+			pb.WriteString(tagDocOpen)
 			pb.Write(stdinData)
-			pb.WriteString("</document>\n\n")
+			pb.WriteString(tagDocClose)
+			pb.WriteByte('\n')
 		}
 		pb.WriteString(args.q)
 	}
@@ -254,12 +255,12 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 	switch block.Value.Format {
 	case types.DocumentFormatMd, types.DocumentFormatTxt, types.DocumentFormatCsv:
 		if utf8.Valid(b) {
-			text := []byte("<document>\n")
+			text := []byte(tagDocOpen)
 			text = append(text, b...)
 			if text[len(text)-1] != '\n' {
 				text = append(text, '\n')
 			}
-			text = append(text, "</document>\n"...)
+			text = append(text, tagDocClose...)
 			return &types.ContentBlockMemberText{Value: string(text)}, nil
 		}
 	}
@@ -320,13 +321,18 @@ func (h *attHandlers) attToBlock(ctx context.Context, name string) (types.Conten
 		if !utf8.Valid(b) {
 			return nil, fmt.Errorf("command %v output is not a valid utf8", cmd)
 		}
-		text := []byte("<document>\n")
+		text := []byte(tagDocOpen)
 		text = append(text, b...)
 		if text[len(text)-1] != '\n' {
 			text = append(text, '\n')
 		}
-		text = append(text, "</document>\n"...)
+		text = append(text, tagDocClose...)
 		return &types.ContentBlockMemberText{Value: string(text)}, nil
 	}
 	return contentBlockFromFile(name)
 }
+
+const (
+	tagDocOpen  = "<document>\n"
+	tagDocClose = "</document>\n"
+)
