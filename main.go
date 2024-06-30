@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
@@ -48,6 +50,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	if err := run(ctx, args); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) != 0 {
+			os.Stderr.Write(ee.Stderr)
+		}
 		log.Fatal(err)
 	}
 }
@@ -94,8 +100,9 @@ func run(ctx context.Context, args runArgs) error {
 		pb.WriteString(args.q)
 	}
 	var contentBlocks []types.ContentBlock
+	handler := loadHandlers()
 	for _, name := range slices.Compact(args.attach) {
-		block, err := contentBlockFromFile(name)
+		block, err := handler.attToBlock(ctx, name)
 		if err != nil {
 			return err
 		}
@@ -257,4 +264,69 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 		}
 	}
 	return block, nil
+}
+
+func loadHandlers() *attHandlers {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil
+	}
+	f, err := os.Open(filepath.Join(configDir, "llmcli", "att-handlers.json"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var matchers []attMatch
+	if err := json.NewDecoder(f).Decode(&matchers); err != nil || len(matchers) == 0 {
+		return nil
+	}
+	return &attHandlers{byPrefix: matchers}
+}
+
+type attHandlers struct {
+	byPrefix []attMatch
+}
+
+type attMatch struct {
+	Prefix string   `json:"prefix"`
+	Cmd    []string `json:"cmd"`
+}
+
+func (h *attHandlers) attToBlock(ctx context.Context, name string) (types.ContentBlock, error) {
+	if h == nil {
+		return contentBlockFromFile(name)
+	}
+	for _, m := range h.byPrefix {
+		if m.Prefix == "" || len(m.Cmd) == 0 || !strings.HasPrefix(name, m.Prefix) {
+			continue
+		}
+		args := append([]string{}, m.Cmd[1:]...)
+		var found bool
+		for i := range args {
+			if args[i] == "${ARG}" {
+				args[i] = name
+				found = true
+				break
+			}
+		}
+		if !found {
+			args = append(args, name)
+		}
+		cmd := exec.CommandContext(ctx, m.Cmd[0], args...)
+		b, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("running %v: %w", cmd, err)
+		}
+		if !utf8.Valid(b) {
+			return nil, fmt.Errorf("command %v output is not a valid utf8", cmd)
+		}
+		text := []byte("<document>\n")
+		text = append(text, b...)
+		if text[len(text)-1] != '\n' {
+			text = append(text, '\n')
+		}
+		text = append(text, "</document>\n"...)
+		return &types.ContentBlockMemberText{Value: string(text)}, nil
+	}
+	return contentBlockFromFile(name)
 }
