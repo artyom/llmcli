@@ -163,6 +163,7 @@ func run(ctx context.Context, args runArgs) error {
 	var usage *types.TokenUsage
 	stream := out.GetStream()
 	defer stream.Close()
+	var stopReasonErr error
 	for evt := range stream.Events() {
 		switch v := evt.(type) {
 		case *types.ConverseStreamOutputMemberContentBlockDelta:
@@ -170,14 +171,20 @@ func run(ctx context.Context, args runArgs) error {
 				fmt.Print(d.Value)
 			}
 		case *types.ConverseStreamOutputMemberContentBlockStop:
-			fmt.Println()
 		case *types.ConverseStreamOutputMemberMessageStart:
 		case *types.ConverseStreamOutputMemberMessageStop:
+			fmt.Println()
+			if s := v.Value.StopReason; s != types.StopReasonEndTurn {
+				stopReasonErr = fmt.Errorf("stop reason: %s", s)
+			}
 		case *types.ConverseStreamOutputMemberMetadata:
 			usage = v.Value.Usage
 		default:
 			log.Printf("unknown event type %T: %+v", evt, evt)
 		}
+	}
+	if err := stream.Close(); err != nil {
+		return err
 	}
 	if err := stream.Err(); err != nil {
 		return err
@@ -185,7 +192,7 @@ func run(ctx context.Context, args runArgs) error {
 	if args.v && usage != nil {
 		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
 	}
-	return nil
+	return stopReasonErr
 }
 
 func contentBlockFromFile(p string) (types.ContentBlock, error) {
