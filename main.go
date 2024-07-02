@@ -27,6 +27,10 @@ import (
 
 func main() {
 	log.SetFlags(0)
+	log.SetPrefix("llmcli: ")
+	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+		log.SetPrefix("\033[1m" + log.Prefix() + "\033[0m")
+	}
 	args := runArgs{}
 	flag.StringVar(&args.q, "q", args.q, "your `prompt` to LLM."+
 		"\nYou can also provide prompt over stdin."+
