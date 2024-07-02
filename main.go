@@ -172,12 +172,16 @@ func run(ctx context.Context, args runArgs) error {
 		switch v := evt.(type) {
 		case *types.ConverseStreamOutputMemberContentBlockDelta:
 			if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok {
-				fmt.Print(d.Value)
+				if _, err := os.Stdout.WriteString(d.Value); err != nil {
+					return err
+				}
 			}
 		case *types.ConverseStreamOutputMemberContentBlockStop:
 		case *types.ConverseStreamOutputMemberMessageStart:
 		case *types.ConverseStreamOutputMemberMessageStop:
-			fmt.Println()
+			if _, err := os.Stdout.WriteString("\n"); err != nil {
+				return err
+			}
 			if s := v.Value.StopReason; s != types.StopReasonEndTurn {
 				stopReasonErr = fmt.Errorf("stop reason: %s", s)
 			}
