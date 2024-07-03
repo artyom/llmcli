@@ -51,6 +51,9 @@ func main() {
 	}
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.Parse()
+	if args.q == "" && len(flag.Args()) != 0 {
+		args.q = strings.Join(flag.Args(), " ")
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	if err := run(ctx, args); err != nil {

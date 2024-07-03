@@ -14,7 +14,7 @@ llmcli is a command-line interface tool for interacting with Large Language Mode
 Basic usage:
 
 ```
-llmcli -q "Your prompt here"
+llmcli "Your prompt here"
 ```
 
 For more detailed information on available options, run:
