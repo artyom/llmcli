@@ -54,9 +54,7 @@ func main() {
 	if args.q == "" && len(flag.Args()) != 0 {
 		args.q = strings.Join(flag.Args(), " ")
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-	if err := run(ctx, args); err != nil {
+	if err := run(context.Background(), args); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(ee.Stderr) != 0 {
 			os.Stderr.Write(ee.Stderr)
@@ -107,6 +105,8 @@ func run(ctx context.Context, args runArgs) error {
 		}
 		pb.WriteString(args.q)
 	}
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	defer cancel()
 	var contentBlocks []types.ContentBlock
 	handler := loadHandlers()
 	for _, name := range slices.Compact(args.attach) {
