@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -123,9 +124,10 @@ func run(ctx context.Context, args runArgs) error {
 		return err
 	}
 	cl := bedrockruntime.NewFromConfig(cfg, func(o *bedrockruntime.Options) {
-		o.Retryer = retry.NewStandard()
+		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
+	const oldClaudeModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
 	const claudeModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelId = claudeModelId
 	for i := range contentBlocks {
@@ -134,7 +136,6 @@ func run(ctx context.Context, args runArgs) error {
 			// Anthropic Claude 3.5 on AWS Bedrock only supports image attachments, not documents,
 			// as of 2024-06-23. If the document is attached, pick another model.
 			// https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns
-			const oldClaudeModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
 			log.Printf("Model %s doesn't support documents, only images, falling back to %s model instead.", modelId, oldClaudeModelId)
 			switch doc.Value.Format {
 			case types.DocumentFormatMd, types.DocumentFormatHtml, types.DocumentFormatCsv, types.DocumentFormatTxt:
@@ -164,6 +165,15 @@ func run(ctx context.Context, args runArgs) error {
 		}
 	}
 	out, err := cl.ConverseStream(ctx, input)
+	var te *types.ThrottlingException
+	if errors.As(err, &te) {
+		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != oldClaudeModelId {
+			log.Printf("all retries were throttled, falling back to model %s", oldClaudeModelId)
+			s := oldClaudeModelId
+			input.ModelId = &s
+			out, err = cl.ConverseStream(ctx, input)
+		}
+	}
 	if err != nil {
 		return err
 	}
