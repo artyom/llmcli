@@ -283,7 +283,10 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 	switch block.Value.Format {
 	case types.DocumentFormatMd, types.DocumentFormatTxt, types.DocumentFormatCsv:
 		if utf8.Valid(b) {
-			text := []byte(tagDocOpen)
+			text := []byte(tagDocOpen[:len(tagDocOpen)-1]) // without the trailing newline
+			text = append(text, "<filename>"...)
+			text = append(text, filepath.Base(p)...)
+			text = append(text, "</filename>\n"...)
 			text = append(text, b...)
 			if text[len(text)-1] != '\n' {
 				text = append(text, '\n')
