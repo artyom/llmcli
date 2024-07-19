@@ -72,39 +72,9 @@ type runArgs struct {
 }
 
 func run(ctx context.Context, args runArgs) error {
-	var stdinIsTerminal bool
-	if st, err := os.Stdin.Stat(); err == nil {
-		stdinIsTerminal = st.Mode()&os.ModeCharDevice != 0
-	}
-	var pb strings.Builder
-	var stdinData []byte
-	var err error
-	if stdinIsTerminal && args.q == "" {
-		log.Println("Please type your prompt, when done, submit with ^D")
-	}
-	if !stdinIsTerminal || (stdinIsTerminal && args.q == "") {
-		stdinData, err = io.ReadAll(os.Stdin)
-	}
+	prompt, err := readPrompt(args)
 	if err != nil {
 		return err
-	}
-	if len(bytes.TrimSpace(stdinData)) == 0 && args.q == "" {
-		return errors.New("empty prompt: please feed it over stdin and/or use the -q flag")
-	}
-	if !utf8.Valid(stdinData) {
-		return errors.New("can only take valid utf8 data on stdin")
-	}
-	switch args.q {
-	case "":
-		pb.Write(stdinData)
-	default:
-		if len(bytes.TrimSpace(stdinData)) != 0 {
-			pb.WriteString(tagDocOpen)
-			pb.Write(stdinData)
-			pb.WriteString(tagDocClose)
-			pb.WriteByte('\n')
-		}
-		pb.WriteString(args.q)
 	}
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
@@ -117,7 +87,7 @@ func run(ctx context.Context, args runArgs) error {
 		}
 		contentBlocks = append(contentBlocks, block)
 	}
-	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: pb.String()})
+	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: prompt})
 
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -214,6 +184,44 @@ func run(ctx context.Context, args runArgs) error {
 		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
 	}
 	return stopReasonErr
+}
+
+func readPrompt(args runArgs) (string, error) {
+	var stdinIsTerminal bool
+	if st, err := os.Stdin.Stat(); err == nil {
+		stdinIsTerminal = st.Mode()&os.ModeCharDevice != 0
+	}
+	var pb strings.Builder
+	var stdinData []byte
+	var err error
+	if stdinIsTerminal && args.q == "" {
+		log.Println("Please type your prompt, when done, submit with ^D")
+	}
+	if !stdinIsTerminal || (stdinIsTerminal && args.q == "") {
+		stdinData, err = io.ReadAll(os.Stdin)
+	}
+	if err != nil {
+		return "", err
+	}
+	if len(bytes.TrimSpace(stdinData)) == 0 && args.q == "" {
+		return "", errors.New("empty prompt: please feed it over stdin and/or use the -q flag")
+	}
+	if !utf8.Valid(stdinData) {
+		return "", errors.New("can only take valid utf8 data on stdin")
+	}
+	switch args.q {
+	case "":
+		pb.Write(stdinData)
+	default:
+		if len(bytes.TrimSpace(stdinData)) != 0 {
+			pb.WriteString(tagDocOpen)
+			pb.Write(stdinData)
+			pb.WriteString(tagDocClose)
+			pb.WriteByte('\n')
+		}
+		pb.WriteString(args.q)
+	}
+	return pb.String(), nil
 }
 
 func contentBlockFromFile(p string) (types.ContentBlock, error) {
