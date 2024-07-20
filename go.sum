@@ -1,3 +1,5 @@
+github.com/artyom/retry v0.1.1 h1:nSG1VCqJVaP4G6+wc9GeturWhevUmxHVb1z2K7Do5Js=
+github.com/artyom/retry v0.1.1/go.mod h1:h92jJRlkkC3UamYm7x1aNlI/a8LyIgnLC1ttWzR34m8=
 github.com/aws/aws-sdk-go-v2 v1.30.0 h1:6qAwtzlfcTtcL8NHtbDQAqgM5s6NDipQTkPxyH/6kAA=
 github.com/aws/aws-sdk-go-v2 v1.30.0/go.mod h1:ffIFB97e2yNsv4aTSGkqtHnppsIJzw7G7BReUZ3jCXM=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.2 h1:x6xsQXGSmW6frevwDA+vi/wqhp1ct18mVXYN08/93to=

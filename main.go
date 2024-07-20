@@ -72,6 +72,9 @@ type runArgs struct {
 }
 
 func run(ctx context.Context, args runArgs) error {
+	if filepath.Base(os.Args[0]) == "chatgpt" {
+		return chatgpt(ctx, args)
+	}
 	prompt, err := readPrompt(args)
 	if err != nil {
 		return err

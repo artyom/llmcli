@@ -3,6 +3,7 @@ module github.com/artyom/llmcli
 go 1.22.0
 
 require (
+	github.com/artyom/retry v0.1.1
 	github.com/aws/aws-sdk-go-v2 v1.30.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.21
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.11.0
