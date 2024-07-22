@@ -46,6 +46,18 @@ func main() {
 		}
 		return nil
 	})
+	flag.Func("t", "temperature parameter for LLM, [0, 1] range.\nHigher values like 0.8 will make the output more random, while\nlower values like 0.2 will make it more focused and deterministic.", func(val string) error {
+		v, err := strconv.ParseFloat(val, 32)
+		if err != nil {
+			return err
+		}
+		if v < 0 || v > 1 {
+			return errors.New("temperature must be within [0, 1] range")
+		}
+		x := float32(v)
+		args.t = &x
+		return nil
+	})
 	flag.BoolVar(&args.v, "v", args.v, "output some additional details like token usage")
 	if configDir, err := os.UserConfigDir(); err == nil {
 		args.sys = filepath.Join(configDir, "llmcli", "system-prompt.txt")
@@ -69,6 +81,7 @@ type runArgs struct {
 	sys    string
 	attach []string
 	v      bool
+	t      *float32
 }
 
 func run(ctx context.Context, args runArgs) error {
@@ -136,6 +149,9 @@ func run(ctx context.Context, args runArgs) error {
 				input.System = append(input.System, &types.SystemContentBlockMemberText{Value: string(b)})
 			}
 		}
+	}
+	if args.t != nil {
+		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
 	out, err := cl.ConverseStream(ctx, input)
 	var te *types.ThrottlingException

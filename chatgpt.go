@@ -75,6 +75,7 @@ func chatgpt(ctx context.Context, args runArgs) error {
 			{Role: "system", Content: []contentEntry{textBlock(systemPrompt)}},
 			userMessage,
 		},
+		Temperature: args.t,
 	}
 	payload, err := json.Marshal(modelRequest)
 	if err != nil {
@@ -197,9 +198,10 @@ type chatgptResponse struct {
 }
 
 type chatgptRequest struct {
-	Model    string    `json:"model"`
-	Stream   bool      `json:"stream"`
-	Messages []message `json:"messages"`
+	Model       string    `json:"model"`
+	Stream      bool      `json:"stream"`
+	Messages    []message `json:"messages"`
+	Temperature *float32  `json:"temperature,omitempty"`
 }
 
 type message struct {
