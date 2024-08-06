@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -76,6 +77,9 @@ func chatgpt(ctx context.Context, args runArgs) error {
 			userMessage,
 		},
 		Temperature: args.t,
+	}
+	if args.v {
+		modelRequest.StreamOptions.IncludeUsage = true
 	}
 	payload, err := json.Marshal(modelRequest)
 	if err != nil {
@@ -146,6 +150,18 @@ func chatgpt(ctx context.Context, args runArgs) error {
 func streamResponse(r io.Reader) error {
 	// https://platform.openai.com/docs/api-reference/chat/object
 	// https://platform.openai.com/docs/api-reference/streaming
+	type usage struct {
+		Total  int `json:"total_tokens"`
+		Input  int `json:"prompt_tokens"`
+		Output int `json:"completion_tokens"`
+	}
+	var tokenUsage *usage
+	defer func() {
+		if tokenUsage == nil {
+			return
+		}
+		log.Printf("tokens usage: total: %d, input: %d, output: %d", tokenUsage.Total, tokenUsage.Input, tokenUsage.Output)
+	}()
 	type chunk struct {
 		Otype   string `json:"object"`
 		Choices []struct {
@@ -154,6 +170,7 @@ func streamResponse(r io.Reader) error {
 				Reason  *string `json:"finish_reason"`
 			} `json:"delta"`
 		} `json:"choices"`
+		Usage *usage `json:"usage"`
 	}
 	w := bufio.NewWriterSize(os.Stdout, 40)
 	defer w.Flush()
@@ -172,6 +189,9 @@ func streamResponse(r io.Reader) error {
 		var msg chunk
 		if err := json.Unmarshal(b[len(dataPrefix):], &msg); err != nil {
 			return err
+		}
+		if msg.Usage != nil && tokenUsage == nil {
+			tokenUsage = msg.Usage
 		}
 		if msg.Otype != "chat.completion.chunk" || len(msg.Choices) == 0 {
 			continue
@@ -198,10 +218,13 @@ type chatgptResponse struct {
 }
 
 type chatgptRequest struct {
-	Model       string    `json:"model"`
-	Stream      bool      `json:"stream"`
-	Messages    []message `json:"messages"`
-	Temperature *float32  `json:"temperature,omitempty"`
+	Model         string    `json:"model"`
+	Stream        bool      `json:"stream"`
+	Messages      []message `json:"messages"`
+	Temperature   *float32  `json:"temperature,omitempty"`
+	StreamOptions struct {
+		IncludeUsage bool `json:"include_usage"`
+	} `json:"stream_options"`
 }
 
 type message struct {
