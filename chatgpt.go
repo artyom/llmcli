@@ -127,24 +127,10 @@ func chatgpt(ctx context.Context, args runArgs) error {
 		return err
 	}
 	ct := resp.Header.Get("Content-Type")
-	if ct == "text/event-stream; charset=utf-8" {
-		return streamResponse(resp.Body)
-	}
-	if ct != "application/json" {
+	if ct != "text/event-stream; charset=utf-8" {
 		return fmt.Errorf("unexpected content-type: %q", ct)
 	}
-	var out chatgptResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return err
-	}
-	if l := len(out.Choices); l != 1 {
-		return fmt.Errorf("response returned %d choices instead of expected 1", l)
-	}
-	fmt.Println(out.Choices[0].Message.Content)
-	if reason := out.Choices[0].FinishReason; reason != "stop" {
-		return fmt.Errorf("stop reason: %s", reason)
-	}
-	return nil
+	return streamResponse(resp.Body)
 }
 
 func streamResponse(r io.Reader) error {
@@ -205,16 +191,6 @@ func streamResponse(r io.Reader) error {
 		return err
 	}
 	return w.Flush()
-}
-
-type chatgptResponse struct {
-	Choices []struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"message"`
-		FinishReason string `json:"finish_reason"`
-	} `json:"choices"`
 }
 
 type chatgptRequest struct {
