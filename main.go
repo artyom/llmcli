@@ -121,6 +121,9 @@ func run(ctx context.Context, args runArgs) error {
 	const oldClaudeModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
 	const claudeModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelId = claudeModelId
+	if os.Getenv("LLMCLI_MODEL") == "haiku" {
+		modelId = "anthropic.claude-3-haiku-20240307-v1:0"
+	}
 	for i := range contentBlocks {
 		if doc, ok := contentBlocks[i].(*types.ContentBlockMemberDocument); ok {
 			// https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html#conversation-inference-supported-models-features
