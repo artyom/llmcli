@@ -30,3 +30,11 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.29.1 h1:myX5CxqXE0QMZNja6FA1/FSE3Vu1
 github.com/aws/aws-sdk-go-v2/service/sts v1.29.1/go.mod h1:N2mQiucsO0VwK9CYuS4/c2n6Smeh1v47Rz3dWCPFLdE=
 github.com/aws/smithy-go v1.20.2 h1:tbp628ireGtzcHDDmLT/6ADHidqnwgF57XOXZe6tp4Q=
 github.com/aws/smithy-go v1.20.2/go.mod h1:krry+ya/rV9RDcV/Q16kpu6ypI4K2czasz0NC3qS14E=
+github.com/yuin/goldmark v1.6.0 h1:boZcn2GTjpsynOsC0iJHnBWa4Bi0qzfJjthwauItG68=
+github.com/yuin/goldmark v1.6.0/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+golang.org/x/tools v0.1.5 h1:ouewzE6p+/VEB31YYnTbEJdi8pFqKp4P4n85vwo3DHA=
+golang.org/x/tools v0.1.5/go.mod h1:o0xws9oXOQQZyjljx8fwUC0k7L1pTE6eaCbjGeHmOkk=
+rsc.io/markdown v0.0.0-20240717201619-868a055c40ae h1:HcQakZADzQk1CHAKfBN7dNxRr/41J+CEEyUyFzbUa88=
+rsc.io/markdown v0.0.0-20240717201619-868a055c40ae/go.mod h1:dTYI7HoCsVAs6SKPMgkC2TV2xRFJB9WqcVydnnZby2Y=

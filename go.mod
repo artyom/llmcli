@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.30.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.21
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.11.0
+	rsc.io/markdown v0.0.0-20240717201619-868a055c40ae
 )
 
 require (
@@ -22,4 +23,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.25.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.29.1 // indirect
 	github.com/aws/smithy-go v1.20.2 // indirect
+	golang.org/x/text v0.3.7 // indirect
 )

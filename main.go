@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"rsc.io/markdown"
 )
 
 func main() {
@@ -63,6 +66,7 @@ func main() {
 		args.sys = filepath.Join(configDir, "llmcli", "system-prompt.txt")
 	}
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
+	flag.BoolVar(&args.web, "w", args.web, "treat reply as markdown, convert it to html and open result in a browser")
 	flag.Parse()
 	if args.q == "" && len(flag.Args()) != 0 {
 		args.q = strings.Join(flag.Args(), " ")
@@ -81,6 +85,7 @@ type runArgs struct {
 	sys    string
 	attach []string
 	v      bool
+	web    bool
 	t      *float32
 }
 
@@ -169,19 +174,24 @@ func run(ctx context.Context, args runArgs) error {
 	var usage *types.TokenUsage
 	stream := out.GetStream()
 	defer stream.Close()
+	var buf bytes.Buffer
+	var wr io.Writer = os.Stdout
+	if args.web {
+		wr = io.MultiWriter(os.Stdout, &buf)
+	}
 	var stopReasonErr error
 	for evt := range stream.Events() {
 		switch v := evt.(type) {
 		case *types.ConverseStreamOutputMemberContentBlockDelta:
 			if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok {
-				if _, err := os.Stdout.WriteString(d.Value); err != nil {
+				if _, err := wr.Write([]byte(d.Value)); err != nil {
 					return err
 				}
 			}
 		case *types.ConverseStreamOutputMemberContentBlockStop:
 		case *types.ConverseStreamOutputMemberMessageStart:
 		case *types.ConverseStreamOutputMemberMessageStop:
-			if _, err := os.Stdout.WriteString("\n"); err != nil {
+			if _, err := wr.Write([]byte("\n")); err != nil {
 				return err
 			}
 			if s := v.Value.StopReason; s != types.StopReasonEndTurn {
@@ -201,6 +211,11 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	if args.v && usage != nil {
 		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
+	}
+	if args.web && buf.Len() != 0 {
+		if err := renderAndOpen(&buf); err != nil {
+			return err
+		}
 	}
 	return stopReasonErr
 }
@@ -394,3 +409,40 @@ const (
 	tagDocOpen  = "<document>\n"
 	tagDocClose = "</document>\n"
 )
+
+// renderAndOpen converts Markdown content to HTML and opens it in the default browser.
+func renderAndOpen(buf *bytes.Buffer) error {
+	f, err := os.CreateTemp("", "llmcli_*.html")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	name := f.Name()
+	if _, err := f.WriteString(htmlHead); err != nil {
+		return err
+	}
+	p := markdown.Parser{Table: true, AutoLinkText: true}
+	body := []byte(htmlHead)
+	body = append(body, markdown.ToHTML(p.Parse(buf.String()))...)
+	if _, err := f.Write(body); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	var openCmd string
+	switch runtime.GOOS {
+	case "darwin":
+		openCmd = "open"
+	case "linux", "freebsd":
+		openCmd = "xdg-open"
+	case "windows":
+		openCmd = "explorer.exe"
+	default:
+		return fmt.Errorf("don't know how to open %q on %s", name, runtime.GOOS)
+	}
+	return exec.Command(openCmd, name).Run()
+}
+
+//go:embed head.html
+var htmlHead string
