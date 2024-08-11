@@ -258,6 +258,9 @@ func readPrompt(args runArgs) (string, error) {
 		}
 		pb.WriteString(args.q)
 	}
+	if stdinIsTerminal && args.q == "" {
+		log.Println("end of prompt")
+	}
 	return pb.String(), nil
 }
 
