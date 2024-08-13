@@ -1,6 +1,6 @@
 module github.com/artyom/llmcli
 
-go 1.22.0
+go 1.23.0
 
 require (
 	github.com/artyom/retry v0.1.1
