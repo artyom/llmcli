@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -118,26 +119,11 @@ func run(ctx context.Context, args runArgs) error {
 		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
-	const oldClaudeModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
-	const claudeModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-	var modelId = claudeModelId
-	if os.Getenv("LLMCLI_MODEL") == "haiku" {
+	const fallbackModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
+	var modelId = cmp.Or(os.Getenv("LLMCLI_MODEL"), "anthropic.claude-3-5-sonnet-20240620-v1:0")
+	switch modelId {
+	case "haiku":
 		modelId = "anthropic.claude-3-haiku-20240307-v1:0"
-	}
-	for i := range contentBlocks {
-		if doc, ok := contentBlocks[i].(*types.ContentBlockMemberDocument); ok {
-			// https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html#conversation-inference-supported-models-features
-			// Anthropic Claude 3.5 on AWS Bedrock only supports image attachments, not documents,
-			// as of 2024-06-23. If the document is attached, pick another model.
-			// https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html#model-ids-arns
-			log.Printf("Model %s doesn't support documents, only images, falling back to %s model instead.", modelId, oldClaudeModelId)
-			switch doc.Value.Format {
-			case types.DocumentFormatMd, types.DocumentFormatHtml, types.DocumentFormatCsv, types.DocumentFormatTxt:
-				log.Print("You can also feed text documents as part of the prompt by ingesting them over stdin.")
-			}
-			modelId = oldClaudeModelId
-			break
-		}
 	}
 	input := &bedrockruntime.ConverseStreamInput{
 		ModelId: &modelId,
@@ -164,9 +150,9 @@ func run(ctx context.Context, args runArgs) error {
 	out, err := cl.ConverseStream(ctx, input)
 	var te *types.ThrottlingException
 	if errors.As(err, &te) {
-		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != oldClaudeModelId {
-			log.Printf("all retries were throttled, falling back to model %s", oldClaudeModelId)
-			s := oldClaudeModelId
+		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != fallbackModelId {
+			log.Printf("all retries were throttled, falling back to model %s", fallbackModelId)
+			s := fallbackModelId
 			input.ModelId = &s
 			out, err = cl.ConverseStream(ctx, input)
 		}
