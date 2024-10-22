@@ -111,7 +111,11 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: prompt})
 
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile("llmcli"))
+	var e config.SharedConfigProfileNotExistError
+	if errors.As(err, &e) {
+		cfg, err = config.LoadDefaultConfig(ctx)
+	}
 	if err != nil {
 		return err
 	}
