@@ -144,7 +144,12 @@ func run(ctx context.Context, args runArgs) error {
 		if b, err := os.ReadFile(args.sys); err == nil {
 			b = bytes.TrimSpace(b)
 			if len(b) != 0 && utf8.Valid(b) {
-				input.System = append(input.System, &types.SystemContentBlockMemberText{Value: string(b)})
+				// some models (Amazon Nova) cannot handle more than a single system prompt block,
+				// so replace the existing value (holding a date) instead of appending a new block.
+				s := time.Now().Local().AppendFormat(nil, "Today is Monday, 02 Jan 2006, time zone MST")
+				s = append(s, ".\n"...)
+				s = append(s, b...)
+				input.System[0].(*types.SystemContentBlockMemberText).Value = string(s)
 			}
 		}
 	}
