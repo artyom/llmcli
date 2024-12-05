@@ -137,22 +137,18 @@ func run(ctx context.Context, args runArgs) error {
 				Content: contentBlocks,
 			},
 		},
-		System: []types.SystemContentBlock{&types.SystemContentBlockMemberText{
-			Value: time.Now().Local().Format("Today is Monday, 02 Jan 2006, time zone MST")}},
 	}
+	systemPrompt := time.Now().Local().AppendFormat(nil, "Today is Monday, 02 Jan 2006, time zone MST")
 	if args.sys != "" {
 		if b, err := os.ReadFile(args.sys); err == nil {
 			b = bytes.TrimSpace(b)
 			if len(b) != 0 && utf8.Valid(b) {
-				// some models (Amazon Nova) cannot handle more than a single system prompt block,
-				// so replace the existing value (holding a date) instead of appending a new block.
-				s := time.Now().Local().AppendFormat(nil, "Today is Monday, 02 Jan 2006, time zone MST")
-				s = append(s, ".\n"...)
-				s = append(s, b...)
-				input.System[0].(*types.SystemContentBlockMemberText).Value = string(s)
+				systemPrompt = append(systemPrompt, ".\n"...)
+				systemPrompt = append(systemPrompt, b...)
 			}
 		}
 	}
+	input.System = []types.SystemContentBlock{&types.SystemContentBlockMemberText{Value: string(systemPrompt)}}
 	if args.t != nil {
 		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
