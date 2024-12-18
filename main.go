@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"iter"
 	"log"
 	"net/http"
 	"os"
@@ -166,52 +167,56 @@ func run(ctx context.Context, args runArgs) error {
 		return err
 	}
 	var usage *types.TokenUsage
-	stream := out.GetStream()
-	defer stream.Close()
 	var buf bytes.Buffer
 	var wr io.Writer = os.Stdout
 	if args.web {
 		wr = io.MultiWriter(os.Stdout, &buf)
 	}
-	var stopReasonErr error
-	for evt := range stream.Events() {
-		switch v := evt.(type) {
-		case *types.ConverseStreamOutputMemberContentBlockDelta:
-			if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok {
-				if _, err := wr.Write([]byte(d.Value)); err != nil {
-					return err
-				}
-			}
-		case *types.ConverseStreamOutputMemberContentBlockStop:
-		case *types.ConverseStreamOutputMemberMessageStart:
-		case *types.ConverseStreamOutputMemberMessageStop:
-			if _, err := wr.Write([]byte("\n")); err != nil {
-				return err
-			}
-			if s := v.Value.StopReason; s != types.StopReasonEndTurn {
-				stopReasonErr = fmt.Errorf("stop reason: %s", s)
-			}
-		case *types.ConverseStreamOutputMemberMetadata:
-			usage = v.Value.Usage
-		default:
-			log.Printf("unknown event type %T: %+v", evt, evt)
+	for chunk, err := range consumeResponse(out, func(u *types.TokenUsage) { usage = u }) {
+		io.WriteString(wr, chunk)
+		if err != nil {
+			return err
 		}
-	}
-	if err := stream.Close(); err != nil {
-		return err
-	}
-	if err := stream.Err(); err != nil {
-		return err
 	}
 	if args.v && usage != nil {
 		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
 	}
 	if args.web && buf.Len() != 0 {
-		if err := renderAndOpen(&buf); err != nil {
-			return err
+		return renderAndOpen(&buf)
+	}
+	return nil
+}
+
+func consumeResponse(cso *bedrockruntime.ConverseStreamOutput, usage func(*types.TokenUsage)) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		stream := cso.GetStream()
+		defer stream.Close()
+		for evt := range stream.Events() {
+			switch v := evt.(type) {
+			case *types.ConverseStreamOutputMemberContentBlockDelta:
+				if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok && !yield(d.Value, nil) {
+					return
+				}
+			case *types.ConverseStreamOutputMemberContentBlockStop:
+			case *types.ConverseStreamOutputMemberMessageStart:
+			case *types.ConverseStreamOutputMemberMessageStop:
+				if !yield("\n", nil) {
+					return
+				}
+				if s := v.Value.StopReason; s != types.StopReasonEndTurn {
+					_ = yield("", fmt.Errorf("stop reason: %s", s))
+					return
+				}
+			case *types.ConverseStreamOutputMemberMetadata:
+				usage(v.Value.Usage)
+			default:
+				log.Printf("unknown event type %T: %+v", evt, evt)
+			}
+		}
+		if err := stream.Err(); err != nil {
+			yield("", err)
 		}
 	}
-	return stopReasonErr
 }
 
 func readPrompt(args runArgs) (string, error) {
