@@ -166,19 +166,19 @@ func run(ctx context.Context, args runArgs) error {
 	if err != nil {
 		return err
 	}
-	var usage *types.TokenUsage
 	var buf bytes.Buffer
 	var wr io.Writer = os.Stdout
 	if args.web {
 		wr = io.MultiWriter(os.Stdout, &buf)
 	}
-	for chunk, err := range consumeResponse(out, func(u *types.TokenUsage) { usage = u }) {
+	rc := newResponseConsumer(out)
+	for chunk := range rc.Chunks() {
 		io.WriteString(wr, chunk)
-		if err != nil {
-			return err
-		}
 	}
-	if args.v && usage != nil {
+	if err := rc.Err(); err != nil {
+		return err
+	}
+	if usage := rc.Usage(); args.v && usage != nil {
 		log.Printf("tokens usage: total: %d, input: %d, output: %d", *usage.TotalTokens, *usage.InputTokens, *usage.OutputTokens)
 	}
 	if args.web && buf.Len() != 0 {
@@ -187,35 +187,45 @@ func run(ctx context.Context, args runArgs) error {
 	return nil
 }
 
-func consumeResponse(cso *bedrockruntime.ConverseStreamOutput, usage func(*types.TokenUsage)) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
-		stream := cso.GetStream()
+func newResponseConsumer(cso *bedrockruntime.ConverseStreamOutput) *responseConsumer {
+	return &responseConsumer{cso: cso}
+}
+
+type responseConsumer struct {
+	cso   *bedrockruntime.ConverseStreamOutput
+	usage *types.TokenUsage
+	err   error
+}
+
+func (r *responseConsumer) Err() error               { return r.err }
+func (r *responseConsumer) Usage() *types.TokenUsage { return r.usage }
+func (r *responseConsumer) Chunks() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		stream := r.cso.GetStream()
 		defer stream.Close()
 		for evt := range stream.Events() {
 			switch v := evt.(type) {
 			case *types.ConverseStreamOutputMemberContentBlockDelta:
-				if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok && !yield(d.Value, nil) {
+				if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok && !yield(d.Value) {
 					return
 				}
 			case *types.ConverseStreamOutputMemberContentBlockStop:
 			case *types.ConverseStreamOutputMemberMessageStart:
 			case *types.ConverseStreamOutputMemberMessageStop:
-				if !yield("\n", nil) {
+				if !yield("\n") {
 					return
 				}
 				if s := v.Value.StopReason; s != types.StopReasonEndTurn {
-					_ = yield("", fmt.Errorf("stop reason: %s", s))
+					r.err = fmt.Errorf("stop reason: %s", s)
 					return
 				}
 			case *types.ConverseStreamOutputMemberMetadata:
-				usage(v.Value.Usage)
+				r.usage = v.Value.Usage
 			default:
 				log.Printf("unknown event type %T: %+v", evt, evt)
 			}
 		}
-		if err := stream.Err(); err != nil {
-			yield("", err)
-		}
+		r.err = stream.Err()
 	}
 }
 
