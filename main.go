@@ -339,7 +339,7 @@ func contentBlockFromFile(p string) (types.ContentBlock, error) {
 		if utf8.Valid(b) {
 			text := []byte(tagDocOpen[:len(tagDocOpen)-1]) // without the trailing newline
 			text = append(text, "<filename>"...)
-			text = append(text, filepath.Base(p)...)
+			text = append(text, p...)
 			text = append(text, "</filename>\n"...)
 			text = append(text, b...)
 			if text[len(text)-1] != '\n' {
