@@ -386,7 +386,7 @@ func (h *attHandlers) attToBlock(ctx context.Context, name string) (types.Conten
 		if m.Prefix == "" || len(m.Cmd) == 0 || !strings.HasPrefix(name, m.Prefix) {
 			continue
 		}
-		args := append([]string{}, m.Cmd[1:]...)
+		args := slices.Clone(m.Cmd[1:])
 		var found bool
 		for i := range args {
 			if args[i] == "${ARG}" {
