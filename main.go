@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	"rsc.io/markdown"
 )
@@ -69,6 +70,7 @@ func main() {
 	}
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.BoolVar(&args.web, "w", args.web, "treat reply as markdown, convert it to html and open result in a browser")
+	flag.IntVar(&args.budget, "b", args.budget, "optional “thinking” budget in `tokens` for Claude 3.7")
 	flag.Parse()
 	if args.q == "" && len(flag.Args()) != 0 {
 		args.q = strings.Join(flag.Args(), " ")
@@ -89,11 +91,15 @@ type runArgs struct {
 	v      bool
 	web    bool
 	t      *float32
+	budget int
 }
 
 func run(ctx context.Context, args runArgs) error {
 	if filepath.Base(os.Args[0]) == "chatgpt" {
 		return chatgpt(ctx, args)
+	}
+	if args.budget < 0 {
+		return errors.New("thinking budget cannot be negative")
 	}
 	prompt, err := readPrompt(args)
 	if err != nil {
@@ -139,6 +145,11 @@ func run(ctx context.Context, args runArgs) error {
 			},
 		},
 	}
+	if args.budget != 0 {
+		input.AdditionalModelRequestFields = thinking(args.budget)
+		maxTokens := int32(args.budget * 2) // if thinking is enabled, max_tokens must be set and be greater than thinking tokens
+		input.InferenceConfig = &types.InferenceConfiguration{MaxTokens: &maxTokens}
+	}
 	systemPrompt := time.Now().Local().AppendFormat(nil, "Today is Monday, 02 Jan 2006, time zone MST")
 	if args.sys != "" {
 		if b, err := os.ReadFile(args.sys); err == nil {
@@ -150,7 +161,7 @@ func run(ctx context.Context, args runArgs) error {
 		}
 	}
 	input.System = []types.SystemContentBlock{&types.SystemContentBlockMemberText{Value: string(systemPrompt)}}
-	if args.t != nil {
+	if args.t != nil && args.budget != 0 { // “Thinking isn’t compatible with temperature”
 		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
 	out, err := cl.ConverseStream(ctx, input)
@@ -201,13 +212,35 @@ func (r *responseConsumer) Err() error               { return r.err }
 func (r *responseConsumer) Usage() *types.TokenUsage { return r.usage }
 func (r *responseConsumer) Chunks() iter.Seq[string] {
 	return func(yield func(string) bool) {
+		var currentlyThinking bool
 		stream := r.cso.GetStream()
 		defer stream.Close()
 		for evt := range stream.Events() {
 			switch v := evt.(type) {
 			case *types.ConverseStreamOutputMemberContentBlockDelta:
-				if d, ok := v.Value.Delta.(*types.ContentBlockDeltaMemberText); ok && !yield(d.Value) {
-					return
+				switch d := v.Value.Delta.(type) {
+				case *types.ContentBlockDeltaMemberText:
+					if currentlyThinking {
+						currentlyThinking = false
+						if !yield("\n</thinking>\n") {
+							return
+						}
+					}
+					if !yield(d.Value) {
+						return
+					}
+				case *types.ContentBlockDeltaMemberReasoningContent:
+					if !currentlyThinking {
+						currentlyThinking = true
+						if !yield("<thinking>\n") {
+							return
+						}
+					}
+					if b, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberText); ok && !yield(b.Value) {
+						return
+					} else if _, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberRedactedContent); ok && !yield("< redacted thinking >") {
+						return
+					}
 				}
 			case *types.ConverseStreamOutputMemberContentBlockStop:
 			case *types.ConverseStreamOutputMemberMessageStart:
@@ -458,3 +491,16 @@ func renderAndOpen(buf *bytes.Buffer) error {
 
 //go:embed head.html
 var htmlHead string
+
+func thinking(budget int) document.Interface {
+	var out struct {
+		Thinking struct {
+			Type   string `document:"type"`
+			Budget int    `document:"budget_tokens"`
+		} `document:"thinking"`
+	}
+	out.Thinking.Type = "enabled"
+	// Anthropic suggests trying at least 4,000 tokens to achieve more comprehensive and nuanced reasoning.
+	out.Thinking.Budget = max(budget, 4000)
+	return document.NewLazyDocument(out)
+}
