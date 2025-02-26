@@ -38,7 +38,7 @@ func main() {
 	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
 		log.SetPrefix("\033[1m" + log.Prefix() + "\033[0m")
 	}
-	args := runArgs{}
+	args := runArgs{model: os.Getenv("LLMCLI_MODEL")}
 	flag.StringVar(&args.q, "q", args.q, "your `prompt` to LLM."+
 		"\nYou can also provide prompt over stdin."+
 		"\nIf you provide data on stdin AND use this flag¹,"+
@@ -85,6 +85,7 @@ func main() {
 }
 
 type runArgs struct {
+	model  string // to be set from env only
 	q      string
 	sys    string
 	attach []string
@@ -100,6 +101,9 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	if args.budget < 0 {
 		return errors.New("thinking budget cannot be negative")
+	}
+	if args.budget != 0 && !strings.Contains(args.model, "claude-3-7") {
+		return errors.New("“thinking” budget option is for Claude 3.7 model only")
 	}
 	prompt, err := readPrompt(args)
 	if err != nil {
@@ -131,7 +135,7 @@ func run(ctx context.Context, args runArgs) error {
 	})
 
 	const fallbackModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
-	var modelId = cmp.Or(os.Getenv("LLMCLI_MODEL"), "anthropic.claude-3-5-sonnet-20240620-v1:0")
+	var modelId = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
 	switch modelId {
 	case "haiku":
 		modelId = "anthropic.claude-3-haiku-20240307-v1:0"
