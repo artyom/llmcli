@@ -187,6 +187,11 @@ func run(ctx context.Context, args runArgs) error {
 		wr = io.MultiWriter(os.Stdout, &buf)
 	}
 	rc := newResponseConsumer(out)
+	if args.budget != 0 {
+		// just in case we changed stream properties at the start of “thinking”
+		// but failed mid-way before resetting formatting
+		defer io.WriteString(wr, "\033[0m")
+	}
 	for chunk := range rc.Chunks() {
 		io.WriteString(wr, chunk)
 	}
@@ -226,7 +231,7 @@ func (r *responseConsumer) Chunks() iter.Seq[string] {
 				case *types.ContentBlockDeltaMemberText:
 					if currentlyThinking {
 						currentlyThinking = false
-						if !yield("\n</thinking>\n") {
+						if !yield("\033[0m\n\n") {
 							return
 						}
 					}
@@ -236,13 +241,13 @@ func (r *responseConsumer) Chunks() iter.Seq[string] {
 				case *types.ContentBlockDeltaMemberReasoningContent:
 					if !currentlyThinking {
 						currentlyThinking = true
-						if !yield("<thinking>\n") {
+						if !yield("\033[3m") {
 							return
 						}
 					}
 					if b, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberText); ok && !yield(b.Value) {
 						return
-					} else if _, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberRedactedContent); ok && !yield("< redacted thinking >") {
+					} else if _, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberRedactedContent); ok && !yield("\n[…redacted thinking…]\n") {
 						return
 					}
 				}
