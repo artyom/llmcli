@@ -70,7 +70,23 @@ func main() {
 	}
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.BoolVar(&args.web, "w", args.web, "treat reply as markdown, convert it to html and open result in a browser")
-	flag.IntVar(&args.budget, "b", args.budget, "optional “thinking” budget in `tokens` for Claude 3.7")
+	flag.Func("b", "optional “thinking” budget in `tokens` for Claude 3.7 (≥1024)", func(val string) error {
+		if !strings.Contains(args.model, "claude-3-7") {
+			return errors.New("“thinking” budget option is for Claude 3.7 model only")
+		}
+		v, err := strconv.ParseUint(val, 10, 17)
+		if err != nil {
+			return err
+		}
+		if v < 1024 {
+			return errors.New("thinking tokens budget should be greater than or equal to 1024")
+		}
+		if v < 4000 {
+			log.Print("Anthropic suggests trying at least 4,000 tokens to achieve more comprehensive and nuanced reasoning")
+		}
+		args.budget = int(v)
+		return nil
+	})
 	flag.Parse()
 	if args.q == "" && len(flag.Args()) != 0 {
 		args.q = strings.Join(flag.Args(), " ")
@@ -98,12 +114,6 @@ type runArgs struct {
 func run(ctx context.Context, args runArgs) error {
 	if filepath.Base(os.Args[0]) == "chatgpt" {
 		return chatgpt(ctx, args)
-	}
-	if args.budget < 0 {
-		return errors.New("thinking budget cannot be negative")
-	}
-	if args.budget != 0 && !strings.Contains(args.model, "claude-3-7") {
-		return errors.New("“thinking” budget option is for Claude 3.7 model only")
 	}
 	prompt, err := readPrompt(args)
 	if err != nil {
@@ -509,7 +519,6 @@ func thinking(budget int) document.Interface {
 		} `document:"thinking"`
 	}
 	out.Thinking.Type = "enabled"
-	// Anthropic suggests trying at least 4,000 tokens to achieve more comprehensive and nuanced reasoning.
-	out.Thinking.Budget = max(budget, 4000)
+	out.Thinking.Budget = budget
 	return document.NewLazyDocument(out)
 }
