@@ -36,7 +36,7 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("llmcli: ")
 	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
-		log.SetPrefix("\033[1m" + log.Prefix() + "\033[0m")
+		log.SetPrefix("\033[1m" + log.Prefix() + ansiReset)
 	}
 	args := runArgs{model: os.Getenv("LLMCLI_MODEL")}
 	flag.StringVar(&args.q, "q", args.q, "your `prompt` to LLM."+
@@ -198,12 +198,21 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	rc := newResponseConsumer(out)
 	if args.budget != 0 {
-		// just in case we changed stream properties at the start of “thinking”
+		// just in case we changed stdout formatting at the start of “thinking”
 		// but failed mid-way before resetting formatting
-		defer io.WriteString(wr, "\033[0m")
+		defer os.Stdout.WriteString(ansiReset)
 	}
+	var thinking bool
 	for chunk := range rc.Chunks() {
-		io.WriteString(wr, chunk)
+		if !thinking && chunk.thinking {
+			thinking = true
+			os.Stdout.WriteString(ansiItalic) // bypassing wr
+		} else if thinking && !chunk.thinking {
+			thinking = false
+			os.Stdout.WriteString(ansiReset) // bypassing wr
+			io.WriteString(wr, "\n\n* * *\n\n")
+		}
+		io.WriteString(wr, chunk.text)
 	}
 	if err := rc.Err(); err != nil {
 		return err
@@ -227,11 +236,15 @@ type responseConsumer struct {
 	err   error
 }
 
+type chunk struct {
+	text     string
+	thinking bool
+}
+
 func (r *responseConsumer) Err() error               { return r.err }
 func (r *responseConsumer) Usage() *types.TokenUsage { return r.usage }
-func (r *responseConsumer) Chunks() iter.Seq[string] {
-	return func(yield func(string) bool) {
-		var currentlyThinking bool
+func (r *responseConsumer) Chunks() iter.Seq[chunk] {
+	return func(yield func(chunk) bool) {
 		stream := r.cso.GetStream()
 		defer stream.Close()
 		for evt := range stream.Events() {
@@ -239,32 +252,20 @@ func (r *responseConsumer) Chunks() iter.Seq[string] {
 			case *types.ConverseStreamOutputMemberContentBlockDelta:
 				switch d := v.Value.Delta.(type) {
 				case *types.ContentBlockDeltaMemberText:
-					if currentlyThinking {
-						currentlyThinking = false
-						if !yield("\033[0m\n\n") {
-							return
-						}
-					}
-					if !yield(d.Value) {
+					if !yield(chunk{text: d.Value}) {
 						return
 					}
 				case *types.ContentBlockDeltaMemberReasoningContent:
-					if !currentlyThinking {
-						currentlyThinking = true
-						if !yield("\033[3m") {
-							return
-						}
-					}
-					if b, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberText); ok && !yield(b.Value) {
+					if b, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberText); ok && !yield(chunk{text: b.Value, thinking: true}) {
 						return
-					} else if _, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberRedactedContent); ok && !yield("\n[…redacted thinking…]\n") {
+					} else if _, ok := d.Value.(*types.ReasoningContentBlockDeltaMemberRedactedContent); ok && !yield(chunk{text: "\n[…redacted thinking…]\n", thinking: true}) {
 						return
 					}
 				}
 			case *types.ConverseStreamOutputMemberContentBlockStop:
 			case *types.ConverseStreamOutputMemberMessageStart:
 			case *types.ConverseStreamOutputMemberMessageStop:
-				if !yield("\n") {
+				if !yield(chunk{text: "\n"}) {
 					return
 				}
 				if s := v.Value.StopReason; s != types.StopReasonEndTurn {
@@ -522,3 +523,6 @@ func thinking(budget int) document.Interface {
 	out.Thinking.Budget = budget
 	return document.NewLazyDocument(out)
 }
+
+const ansiReset = "\033[0m"
+const ansiItalic = "\033[3m"
