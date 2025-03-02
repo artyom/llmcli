@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -29,13 +30,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"golang.org/x/term"
 	"rsc.io/markdown"
 )
 
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("llmcli: ")
-	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+	if term.IsTerminal(int(os.Stderr.Fd())) {
 		log.SetPrefix("\033[1m" + log.Prefix() + ansiReset)
 	}
 	args := runArgs{model: os.Getenv("LLMCLI_MODEL")}
@@ -200,16 +202,16 @@ func run(ctx context.Context, args runArgs) error {
 	if args.budget != 0 {
 		// just in case we changed stdout formatting at the start of “thinking”
 		// but failed mid-way before resetting formatting
-		defer os.Stdout.WriteString(ansiReset)
+		defer termWrite(ansiReset)
 	}
 	var thinking bool
 	for chunk := range rc.Chunks() {
 		if !thinking && chunk.thinking {
 			thinking = true
-			os.Stdout.WriteString(ansiItalic) // bypassing wr
+			termWrite(ansiItalic) // bypassing wr
 		} else if thinking && !chunk.thinking {
 			thinking = false
-			os.Stdout.WriteString(ansiReset) // bypassing wr
+			termWrite(ansiReset) // bypassing wr
 			io.WriteString(wr, "\n\n* * *\n\n")
 		}
 		io.WriteString(wr, chunk.text)
@@ -224,6 +226,15 @@ func run(ctx context.Context, args runArgs) error {
 		return renderAndOpen(&buf)
 	}
 	return nil
+}
+
+var stdoutIsTerm = sync.OnceValue(func() bool { return term.IsTerminal(int(os.Stdout.Fd())) })
+
+func termWrite(s string) {
+	if !stdoutIsTerm() {
+		return
+	}
+	os.Stdout.WriteString(s)
 }
 
 func newResponseConsumer(cso *bedrockruntime.ConverseStreamOutput) *responseConsumer {
@@ -283,10 +294,7 @@ func (r *responseConsumer) Chunks() iter.Seq[chunk] {
 }
 
 func readPrompt(args runArgs) (string, error) {
-	var stdinIsTerminal bool
-	if st, err := os.Stdin.Stat(); err == nil {
-		stdinIsTerminal = st.Mode()&os.ModeCharDevice != 0
-	}
+	stdinIsTerminal := term.IsTerminal(int(os.Stdin.Fd()))
 	var pb strings.Builder
 	var stdinData []byte
 	var err error
