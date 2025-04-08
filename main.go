@@ -177,6 +177,13 @@ func run(ctx context.Context, args runArgs) error {
 		}
 	}
 	input.System = []types.SystemContentBlock{&types.SystemContentBlockMemberText{Value: string(systemPrompt)}}
+	// Different models have different requirements for the minimum number of tokens per cache checkpoint,
+	// but generally it't at least 1k tokens. Since we cannot count tokens, make a very rough estimate.
+	// Even if we're off and under this requirement, the call just won't cache the prompt, but still be processed.
+	if len(systemPrompt) > 2000 && modelSupportsCaching(*input.ModelId) {
+		input.System = append(input.System, &types.SystemContentBlockMemberCachePoint{Value: types.CachePointBlock{Type: types.CachePointTypeDefault}})
+	}
+
 	if args.t != nil && args.budget != 0 { // “Thinking isn’t compatible with temperature”
 		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
@@ -534,3 +541,19 @@ func thinking(budget int) document.Interface {
 
 const ansiReset = "\033[0m"
 const ansiItalic = "\033[3m"
+
+func modelSupportsCaching(modelId string) bool {
+	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
+	for _, s := range [...]string{
+		"anthropic.claude-3-7-sonnet-20250219-v1:0",
+		"anthropic.claude-3-5-haiku-20241022-v1:0",
+		"amazon.nova-micro-v1:0",
+		"amazon.nova-lite-v1:0",
+		"amazon.nova-pro-v1:0",
+	} {
+		if modelId == s || strings.HasSuffix(modelId, s) {
+			return true
+		}
+	}
+	return false
+}
