@@ -72,9 +72,9 @@ func main() {
 	}
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.BoolVar(&args.web, "w", args.web, "treat reply as markdown, convert it to html and open result in a browser")
-	flag.Func("b", "optional “thinking” budget in `tokens` for Claude 3.7 (≥1024)", func(val string) error {
-		if !strings.Contains(args.model, "claude-3-7") {
-			return errors.New("“thinking” budget option is for Claude 3.7 model only")
+	flag.Func("b", "optional “thinking” budget in `tokens` for Claude 3.7+ (≥1024)", func(val string) error {
+		if !containsAnyOf(args.model, "claude-3-7", "claude-sonnet-4", "claude-opus-4") {
+			return errors.New("“thinking” budget option is for Claude 3.7+ models only")
 		}
 		v, err := strconv.ParseUint(val, 10, 17)
 		if err != nil {
@@ -542,6 +542,8 @@ const ansiItalic = "\033[3m"
 func modelSupportsCaching(modelId string) bool {
 	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
 	for _, s := range [...]string{
+		"anthropic.claude-opus-4-20250514-v1:0",
+		"anthropic.claude-sonnet-4-20250514-v1:0",
 		"anthropic.claude-3-7-sonnet-20250219-v1:0",
 		"anthropic.claude-3-5-haiku-20241022-v1:0",
 		"amazon.nova-micro-v1:0",
@@ -549,6 +551,15 @@ func modelSupportsCaching(modelId string) bool {
 		"amazon.nova-pro-v1:0",
 	} {
 		if modelId == s || strings.HasSuffix(modelId, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyOf(text string, subs ...string) bool {
+	for _, s := range subs {
+		if strings.Contains(text, s) {
 			return true
 		}
 	}
