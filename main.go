@@ -143,7 +143,7 @@ func run(ctx context.Context, args runArgs) error {
 		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
-	const fallbackModelId = "anthropic.claude-3-sonnet-20240229-v1:0"
+	const fallbackModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelId = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
 	switch modelId {
 	case "haiku":
