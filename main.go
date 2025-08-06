@@ -120,14 +120,21 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
-	var contentBlocks []types.ContentBlock
+	args.attach = slices.Compact(args.attach)
+	contentBlocks := make([]types.ContentBlock, len(args.attach), len(args.attach)+1)
 	handler := loadHandlers()
-	for _, name := range slices.Compact(args.attach) {
-		block, err := handler.attToBlock(ctx, name)
-		if err != nil {
+	g := newg(ctx)
+	for i, name := range args.attach {
+		g.Go(func(ctx context.Context) error {
+			block, err := handler.attToBlock(ctx, name)
+			if err == nil {
+				contentBlocks[i] = block
+			}
 			return err
-		}
-		contentBlocks = append(contentBlocks, block)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 	contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{Value: prompt})
 
@@ -564,4 +571,36 @@ func containsAnyOf(text string, subs ...string) bool {
 		}
 	}
 	return false
+}
+
+func newg(ctx context.Context) *group {
+	ctx, cancel := context.WithCancel(ctx)
+	return &group{ctx: ctx, cancel: cancel}
+}
+
+type group struct {
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
+	once   sync.Once
+	err    error
+}
+
+func (g *group) Go(f func(context.Context) error) {
+	g.wg.Add(1)
+	go func() {
+		defer g.wg.Done()
+		if err := f(g.ctx); err != nil {
+			g.once.Do(func() {
+				g.err = err
+				g.cancel()
+			})
+		}
+	}()
+}
+
+func (g *group) Wait() error {
+	g.wg.Wait()
+	g.cancel()
+	return g.err
 }
