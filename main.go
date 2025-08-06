@@ -150,7 +150,6 @@ func run(ctx context.Context, args runArgs) error {
 		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
-	const fallbackModelID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	var modelID = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
 	switch modelID {
 	case "haiku":
@@ -192,15 +191,6 @@ func run(ctx context.Context, args runArgs) error {
 		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
 	out, err := cl.ConverseStream(ctx, input)
-	var te *types.ThrottlingException
-	if errors.As(err, &te) {
-		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != fallbackModelID {
-			log.Printf("all retries were throttled, falling back to model %s", fallbackModelID)
-			s := fallbackModelID
-			input.ModelId = &s
-			out, err = cl.ConverseStream(ctx, input)
-		}
-	}
 	if err != nil {
 		return err
 	}
