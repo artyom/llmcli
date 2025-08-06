@@ -190,16 +190,42 @@ func run(ctx context.Context, args runArgs) error {
 	if args.t != nil && args.budget != 0 { // “Thinking isn’t compatible with temperature”
 		input.InferenceConfig = &types.InferenceConfiguration{Temperature: args.t}
 	}
-	out, err := cl.ConverseStream(ctx, input)
-	if err != nil {
-		return err
+	var rc modelResponseConsumer
+	if !modelSupportsStreaming(*input.ModelId) {
+		out, err := cl.Converse(ctx, nonStreamInput(input))
+		if err != nil {
+			return err
+		}
+		rc = newBasicResponseConsumer(out)
+	} else {
+		out, err := cl.ConverseStream(ctx, input)
+		var ve *types.ValidationException
+		switch {
+		case err == nil:
+			rc = newResponseConsumer(out)
+		case errors.As(err, &ve) && ve.Message != nil && *ve.Message == "The model is unsupported for streaming.":
+			if args.v {
+				log.Printf("model %q is not supported for streaming, trying non-streaming mode", *input.ModelId)
+			}
+			if out, err := cl.Converse(ctx, nonStreamInput(input)); err == nil {
+				markModelNonStreaming(*input.ModelId)
+				rc = newBasicResponseConsumer(out)
+				break
+			} else {
+				if args.v {
+					log.Printf("fallback attempt to use Converse API: %v", err)
+				}
+			}
+			return err // intentionally return the error from failed ConverseStream attempt
+		default:
+			return err
+		}
 	}
 	var buf bytes.Buffer
 	var wr io.Writer = os.Stdout
 	if args.web {
 		wr = io.MultiWriter(os.Stdout, &buf)
 	}
-	rc := newResponseConsumer(out)
 	if args.budget != 0 {
 		// just in case we changed stdout formatting at the start of “thinking”
 		// but failed mid-way before resetting formatting
@@ -291,6 +317,61 @@ func (r *responseConsumer) Chunks() iter.Seq[chunk] {
 			}
 		}
 		r.err = stream.Err()
+	}
+}
+
+type modelResponseConsumer interface {
+	Chunks() iter.Seq[chunk]
+	Usage() *types.TokenUsage
+	Err() error
+}
+
+func newBasicResponseConsumer(r *bedrockruntime.ConverseOutput) *basicResponseConsumer {
+	return &basicResponseConsumer{res: r}
+}
+
+type basicResponseConsumer struct {
+	res *bedrockruntime.ConverseOutput
+}
+
+func (r *basicResponseConsumer) Usage() *types.TokenUsage { return r.res.Usage }
+func (r *basicResponseConsumer) Err() error {
+	if s := r.res.StopReason; s != types.StopReasonEndTurn {
+		return fmt.Errorf("stop reason: %s", s)
+	}
+	return nil
+}
+func (r *basicResponseConsumer) Chunks() iter.Seq[chunk] {
+	return func(yield func(chunk) bool) {
+		for _, block := range r.res.Output.(*types.ConverseOutputMemberMessage).Value.Content {
+			switch v := block.(type) {
+			case *types.ContentBlockMemberText:
+				if !yield(chunk{text: v.Value}) {
+					return
+				}
+			case *types.ContentBlockMemberReasoningContent:
+				if ent, ok := v.Value.(*types.ReasoningContentBlockMemberReasoningText); ok && !yield(chunk{text: *ent.Value.Text, thinking: true}) {
+					return
+				} else if _, ok := v.Value.(*types.ReasoningContentBlockMemberRedactedContent); ok && !yield(chunk{text: "\n[…redacted thinking…]\n", thinking: true}) {
+					return
+				}
+			default:
+				log.Printf("unknown block type: %T %+v", v, v)
+			}
+		}
+		if !yield(chunk{text: "\n"}) {
+			return
+		}
+	}
+}
+
+// nonStreamInput convers prepared ConverseStream input into plain Converse input.
+func nonStreamInput(csi *bedrockruntime.ConverseStreamInput) *bedrockruntime.ConverseInput {
+	return &bedrockruntime.ConverseInput{
+		ModelId:         csi.ModelId,
+		System:          csi.System,
+		Messages:        csi.Messages,
+		InferenceConfig: csi.InferenceConfig,
 	}
 }
 
@@ -593,4 +674,37 @@ func (g *group) Wait() error {
 	g.wg.Wait()
 	g.cancel()
 	return g.err
+}
+
+var cacheDir = sync.OnceValue(func() string {
+	d, err := os.UserCacheDir()
+	if err != nil {
+		d = os.TempDir()
+	}
+	return filepath.Join(d, "llmcli")
+})
+
+const noStreamingSupportFile = "llmcli-no-streaming.txt"
+
+func modelSupportsStreaming(model string) bool {
+	data, err := os.ReadFile(filepath.Join(cacheDir(), noStreamingSupportFile))
+	if err != nil {
+		return true
+	}
+	for line := range strings.Lines(string(data)) {
+		if model == strings.TrimSpace(line) {
+			return false
+		}
+	}
+	return true
+}
+
+func markModelNonStreaming(model string) {
+	_ = os.MkdirAll(cacheDir(), 0755)
+	f, err := os.OpenFile(filepath.Join(cacheDir(), noStreamingSupportFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(model + "\n")
 }

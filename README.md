@@ -18,7 +18,7 @@ llmcli -h
 
 ## Requirements
 
-- AWS account with Bedrock access and at least one [model that supports ConverseStream API and system prompt](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) enabled.
+- AWS account with Bedrock access and at least one [model that supports ConverseStream (or Converse) API and system prompt](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) enabled.
   Configure which model to use with `LLMCLI_MODEL` environment variable (example: `us.amazon.nova-micro-v1:0`).
 - Properly configured AWS credentials.
   This tool tries to use AWS profile named “llmcli”, and falls back to default AWS credentials if profile is not found.
