@@ -143,14 +143,14 @@ func run(ctx context.Context, args runArgs) error {
 		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
-	const fallbackModelId = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-	var modelId = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
-	switch modelId {
+	const fallbackModelID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+	var modelID = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
+	switch modelID {
 	case "haiku":
-		modelId = "anthropic.claude-3-haiku-20240307-v1:0"
+		modelID = "anthropic.claude-3-haiku-20240307-v1:0"
 	}
 	input := &bedrockruntime.ConverseStreamInput{
-		ModelId: &modelId,
+		ModelId: &modelID,
 		Messages: []types.Message{
 			{
 				Role:    types.ConversationRoleUser,
@@ -187,9 +187,9 @@ func run(ctx context.Context, args runArgs) error {
 	out, err := cl.ConverseStream(ctx, input)
 	var te *types.ThrottlingException
 	if errors.As(err, &te) {
-		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != fallbackModelId {
-			log.Printf("all retries were throttled, falling back to model %s", fallbackModelId)
-			s := fallbackModelId
+		if ok, _ := strconv.ParseBool(os.Getenv("LLMCLI_FALLBACK_ON_THROTTLE")); ok && *input.ModelId != fallbackModelID {
+			log.Printf("all retries were throttled, falling back to model %s", fallbackModelID)
+			s := fallbackModelID
 			input.ModelId = &s
 			out, err = cl.ConverseStream(ctx, input)
 		}
@@ -539,7 +539,7 @@ func thinking(budget int) document.Interface {
 const ansiReset = "\033[0m"
 const ansiItalic = "\033[3m"
 
-func modelSupportsCaching(modelId string) bool {
+func modelSupportsCaching(modelID string) bool {
 	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
 	for _, s := range [...]string{
 		"anthropic.claude-opus-4-20250514-v1:0",
@@ -550,7 +550,7 @@ func modelSupportsCaching(modelId string) bool {
 		"amazon.nova-lite-v1:0",
 		"amazon.nova-pro-v1:0",
 	} {
-		if modelId == s || strings.HasSuffix(modelId, s) {
+		if modelID == s || strings.HasSuffix(modelID, s) {
 			return true
 		}
 	}
