@@ -231,8 +231,16 @@ func run(ctx context.Context, args runArgs) error {
 		// but failed mid-way before resetting formatting
 		defer termWrite(ansiReset)
 	}
+	muteThinking, _ := strconv.ParseBool(os.Getenv("LLMCLI_MUTE_THINKING"))
 	var thinking bool
 	for chunk := range rc.Chunks() {
+		if muteThinking { // shortcut to bypass complex formatting logic below
+			if !chunk.thinking {
+				io.WriteString(wr, chunk.text)
+			}
+			continue
+		}
+
 		if !thinking && chunk.thinking {
 			thinking = true
 			termWrite(ansiItalic) // bypassing wr
