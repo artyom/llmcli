@@ -667,16 +667,14 @@ type group struct {
 }
 
 func (g *group) Go(f func(context.Context) error) {
-	g.wg.Add(1)
-	go func() {
-		defer g.wg.Done()
+	g.wg.Go(func() {
 		if err := f(g.ctx); err != nil {
 			g.once.Do(func() {
 				g.err = err
 				g.cancel()
 			})
 		}
-	}()
+	})
 }
 
 func (g *group) Wait() error {
