@@ -628,6 +628,7 @@ const ansiItalic = "\033[3m"
 func modelSupportsCaching(modelID string) bool {
 	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
 	for _, s := range [...]string{
+		"anthropic.claude-sonnet-4-5-20250929-v1:0",
 		"anthropic.claude-opus-4-1-20250805-v1:0",
 		"anthropic.claude-opus-4-20250514-v1:0",
 		"anthropic.claude-sonnet-4-20250514-v1:0",
