@@ -73,7 +73,7 @@ func main() {
 	flag.StringVar(&args.sys, "s", args.sys, "system prompt `file`")
 	flag.BoolVar(&args.web, "w", args.web, "treat reply as markdown, convert it to html and open result in a browser")
 	flag.Func("b", "optional “thinking” budget in `tokens` for Claude 3.7+ (≥1024)", func(val string) error {
-		if !containsAnyOf(args.model, "claude-3-7", "claude-sonnet-4", "claude-opus-4") {
+		if !containsAnyOf(args.model, "claude-3-7", "claude-sonnet-4", "claude-opus-4", "claude-haiku-4-5") {
 			return errors.New("“thinking” budget option is for Claude 3.7+ models only")
 		}
 		v, err := strconv.ParseUint(val, 10, 17)
@@ -628,6 +628,7 @@ const ansiItalic = "\033[3m"
 func modelSupportsCaching(modelID string) bool {
 	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
 	for _, s := range [...]string{
+		"anthropic.claude-haiku-4-5-20251001-v1:0",
 		"anthropic.claude-sonnet-4-5-20250929-v1:0",
 		"anthropic.claude-opus-4-1-20250805-v1:0",
 		"anthropic.claude-opus-4-20250514-v1:0",
