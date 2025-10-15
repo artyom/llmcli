@@ -40,7 +40,7 @@ func main() {
 	if term.IsTerminal(int(os.Stderr.Fd())) {
 		log.SetPrefix("\033[1m" + log.Prefix() + ansiReset)
 	}
-	args := runArgs{model: os.Getenv("LLMCLI_MODEL")}
+	args := runArgs{model: cmp.Or(os.Getenv("LLMCLI_MODEL"), "global.anthropic.claude-haiku-4-5-20251001-v1:0")}
 	flag.StringVar(&args.q, "q", args.q, "your `prompt` to LLM."+
 		"\nYou can also provide prompt over stdin."+
 		"\nIf you provide data on stdin AND use this flag¹,"+
@@ -150,13 +150,8 @@ func run(ctx context.Context, args runArgs) error {
 		o.Retryer = retry.NewStandard(func(o *retry.StandardOptions) { o.MaxAttempts = 6 })
 	})
 
-	var modelID = cmp.Or(args.model, "anthropic.claude-3-5-sonnet-20240620-v1:0")
-	switch modelID {
-	case "haiku":
-		modelID = "anthropic.claude-3-haiku-20240307-v1:0"
-	}
 	input := &bedrockruntime.ConverseStreamInput{
-		ModelId: &modelID,
+		ModelId: &args.model,
 		Messages: []types.Message{
 			{
 				Role:    types.ConversationRoleUser,
