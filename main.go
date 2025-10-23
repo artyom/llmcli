@@ -50,7 +50,15 @@ func main() {
 		"\n it is NOT read to avoid the illusion of blocking.")
 	flag.Func("f", "`file` to attach (can be used multiple times)", func(name string) error {
 		if name != "" {
-			args.attach = append(args.attach, name)
+			if strings.Contains(name, "*") {
+				matches, err := filepath.Glob(name)
+				if err != nil {
+					return err
+				}
+				args.attach = append(args.attach, matches...)
+			} else {
+				args.attach = append(args.attach, name)
+			}
 		}
 		return nil
 	})
@@ -120,7 +128,7 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
-	args.attach = slices.Compact(args.attach)
+	args.attach = dedup(args.attach)
 	contentBlocks := make([]types.ContentBlock, len(args.attach), len(args.attach)+1)
 	handler := loadHandlers()
 	g := newg(ctx)
@@ -711,4 +719,20 @@ func markModelNonStreaming(model string) {
 	}
 	defer f.Close()
 	_, _ = f.WriteString(model + "\n")
+}
+
+func dedup(ss []string) []string {
+	if len(ss) <= 1 {
+		return ss
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, s := range ss {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		out = append(out, s)
+		seen[s] = struct{}{}
+	}
+	return out
 }
