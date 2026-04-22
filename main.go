@@ -246,7 +246,7 @@ func run(ctx context.Context, args runArgs) error {
 
 		if !thinking && chunk.thinking {
 			thinking = true
-			termWrite(ansiItalic) // bypassing wr
+			termWrite(ansiDim) // bypassing wr
 		} else if thinking && !chunk.thinking {
 			thinking = false
 			termWrite(ansiReset) // bypassing wr
@@ -626,7 +626,7 @@ func thinking(budget int) document.Interface {
 }
 
 const ansiReset = "\033[0m"
-const ansiItalic = "\033[3m"
+const ansiDim = "\033[2m"
 
 func modelSupportsCaching(modelID string) bool {
 	// https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models
